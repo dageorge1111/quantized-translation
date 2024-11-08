@@ -1,45 +1,56 @@
-import onnxruntime as ort
-from transformers import MarianTokenizer
+import onnxruntime
+from transformers import MarianTokenizer, MarianConfig
 import numpy as np
 
-# Load tokenizer and ONNX model
-model_name = "Helsinki-NLP/opus-mt-en-ROMANCE"
+# Replace with your desired model
+model_name = 'Helsinki-NLP/opus-mt-en-de'
 tokenizer = MarianTokenizer.from_pretrained(model_name)
-onnx_model_path = "marianmt_quantized.onnx"
+config = MarianConfig.from_pretrained(model_name)
 
-# Create an ONNX Runtime session
-session = ort.InferenceSession(onnx_model_path)
+ort_session = onnxruntime.InferenceSession("marianmt_quantized.onnx")
+input_text = "Hello world!"
+inputs = tokenizer([input_text], return_tensors="np")
 
-# Input text and tokenization
-input_text = "Hello, how are you?"
-inputs = tokenizer(input_text, return_tensors="np")
+input_ids = inputs['input_ids']
+attention_mask = inputs['attention_mask']
 
-# Define the valid start token (decoder_input_ids)
-decoder_start_token_id = tokenizer.pad_token_id if tokenizer.pad_token_id < tokenizer.vocab_size else tokenizer.bos_token_id
-if decoder_start_token_id is None or decoder_start_token_id >= tokenizer.vocab_size:
-    raise ValueError("The start token ID is out of vocabulary range. Please check tokenizer configuration.")
 
-decoder_input_ids = np.array([[decoder_start_token_id]], dtype=np.int64)
+decoder_start_token_id = config.decoder_start_token_id
+eos_token_id = config.eos_token_id
 
-# Use "output" as the output name
-output_name = "output"
+batch_size = input_ids.shape[0]
+decoder_input_ids = np.full((batch_size, 1), decoder_start_token_id, dtype=np.int64)
 
-# Run inference
-try:
-    output = session.run(
-        output_names=[output_name],
-        input_feed={
-            "input_ids": inputs["input_ids"].astype(np.int64),
-            "attention_mask": inputs["attention_mask"].astype(np.int64),
-            "decoder_input_ids": decoder_input_ids
-        }
-    )
-    
-    # Decode and print the output
-    translated_tokens = output[0]
-    translated_text = tokenizer.decode(translated_tokens[0], skip_special_tokens=True)
-    print("Translated text:", translated_text)
 
-except Exception as e:
-    print("Error during ONNX inference:", e)
+# Start decoding
+outputs = decoder_input_ids
+max_length = 50  # Set a maximum output length
+
+for _ in range(max_length):
+    # Prepare inputs for the model
+    ort_inputs = {
+        "input_ids": input_ids,
+        "attention_mask": attention_mask,
+        "decoder_input_ids": outputs
+    }
+    # Run the model
+    ort_outs = ort_session.run(None, ort_inputs)
+    # Get the logits
+    logits = ort_outs[0]
+    # Get the next token logits (the last time step)
+    next_token_logits = logits[:, -1, :]
+    # Get the most probable next token
+    next_token_id = np.argmax(next_token_logits, axis=-1).reshape(-1, 1)
+    # Append the next token id to outputs
+    outputs = np.concatenate([outputs, next_token_id], axis=1)
+    # Check for end of sentence token
+    if np.all(next_token_id == eos_token_id):
+        break
+
+# Decode the output ids
+translated_tokens = outputs
+translated_text = tokenizer.batch_decode(translated_tokens, skip_special_tokens=True)
+
+print("Translated text:", translated_text[0])
+
 
