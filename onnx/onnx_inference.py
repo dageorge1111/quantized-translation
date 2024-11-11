@@ -22,7 +22,7 @@ ort_session = onnxruntime.InferenceSession(
 )
 
 # Input text to be translated
-input_text = "Hello world!"
+input_text = "Where is the furthest point on north campus?"
 inputs = tokenizer([input_text], return_tensors="np", max_length=64, truncation=True, padding='max_length')
 
 input_ids = inputs['input_ids']
@@ -66,6 +66,6 @@ for i in range(1, max_length):
 # Decode output tokens
 translated_tokens = outputs[:, :i+1]  # Slice up to the last generated token
 translated_text = tokenizer.batch_decode(translated_tokens, skip_special_tokens=True)
-
+print(translated_text)
 print("Translated text:", translated_text[0])
 

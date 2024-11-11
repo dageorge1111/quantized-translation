@@ -6,6 +6,7 @@ model_name = 'Helsinki-NLP/opus-mt-en-de'  # Replace with your desired model
 model = MarianMTModel.from_pretrained(model_name)
 tokenizer = MarianTokenizer.from_pretrained(model_name)
 
+
 # Set the model to evaluation mode
 model.eval()
 
@@ -24,7 +25,7 @@ decoder_input_ids = torch.full(
 torch.onnx.export(
     model,
     (inputs['input_ids'], inputs['attention_mask'], decoder_input_ids),
-    "marianmt_model.onnx",
+    "../models/marianmt_model.onnx",
     input_names=["input_ids", "attention_mask", "decoder_input_ids"],
     output_names=["output"],
     dynamic_axes={
