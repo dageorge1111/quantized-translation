@@ -7,6 +7,7 @@ model_name = 'Helsinki-NLP/opus-mt-en-de'
 tokenizer = MarianTokenizer.from_pretrained(model_name)
 config = MarianConfig.from_pretrained(model_name)
 
+
 # Set up session options
 session_options = onnxruntime.SessionOptions()
 session_options.intra_op_num_threads = 1
@@ -24,6 +25,12 @@ ort_session = onnxruntime.InferenceSession(
 # Input text to be translated
 input_text = "Where is the furthest point on north campus?"
 inputs = tokenizer([input_text], return_tensors="np", max_length=64, truncation=True, padding='max_length')
+
+tokens_python = tokenizer.encode(input_text)
+print("Python token IDs:", tokens_python)
+
+print("Decoder start token ID:", tokenizer.pad_token_id)
+print("EOS token ID:", tokenizer.eos_token_id)
 
 input_ids = inputs['input_ids']
 attention_mask = inputs['attention_mask']
@@ -65,6 +72,7 @@ for i in range(1, max_length):
 
 # Decode output tokens
 translated_tokens = outputs[:, :i+1]  # Slice up to the last generated token
+#translated_text = model.generate(**inputs, max_length=30, num_beams=1)
 translated_text = tokenizer.batch_decode(translated_tokens, skip_special_tokens=True)
 print(translated_text)
 print("Translated text:", translated_text[0])
