@@ -4,7 +4,7 @@ from transformers import MarianTokenizer
 
 # Paths to the saved tokenizer and ONNX model
 tokenizer_dir = "../models/tokenizer"
-onnx_model_path = "../models/marianmt_model_float32.onnx"
+onnx_model_path = "../models/marianmt_model_fp16.onnx"
 
 # 1. Load the tokenizer
 tokenizer = MarianTokenizer.from_pretrained(tokenizer_dir)
