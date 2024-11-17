@@ -13,7 +13,7 @@ tokenizer = MarianTokenizer.from_pretrained(tokenizer_dir)
 ort_session = ort.InferenceSession(quantized_model_path, providers=["CPUExecutionProvider"])
 
 # Preprocess the input text
-input_text = "Where is the nearest hotel?"
+input_text = "Why do you like Germany so much?"
 inputs = tokenizer([input_text], return_tensors="np", max_length=64, truncation=True, padding="max_length")
 input_ids = inputs["input_ids"]
 attention_mask = inputs["attention_mask"]

@@ -5,4 +5,12 @@ PTH -> Good performance | running under 1.5 GB physical RAM
 TF -> Difficult putting together
 
 STT:
-Using OpenAI Whisper for STT. Requires roughly 70 MB physical RAM
+Using Sherpa-Onnx for STT. Requires roughly 300-400 MB RAM
+Compiled using docker cross compile image:
+
+docker pull dockcross/linux-armv7
+docker run --rm dockcross/linux-armv7 > ./dockcross
+chmod +x ./dockcross
+
+TTS:
+Using Sherpa-Onnx for TTS. Requires roughly 300-400 MB RAM
