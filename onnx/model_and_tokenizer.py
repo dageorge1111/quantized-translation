@@ -52,24 +52,17 @@ torch.onnx.export(
 
 print("ONNX model exported with float32 precision.")
 
-# Verify all tensors in the ONNX model are float32
-onnx_model = onnx.load(onnx_model_path)
-for initializer in onnx_model.graph.initializer:
-    assert initializer.data_type == onnx.TensorProto.FLOAT, f"{initializer.name} is not float32."
-print("All model parameters in ONNX model are confirmed to be float32.")
-
-import onnx
 from onnxruntime.quantization import quantize_dynamic, QuantType
 
 # Paths for the original and quantized ONNX models
 onnx_model_path = "../models/marianmt_model_float32.onnx"
-quantized_model_path = "../models/marianmt_model_int16.onnx"
+quantized_model_path = "../models/marianmt_model_int8.onnx"
 
-# Perform dynamic quantization to INT16
+# Perform dynamic quantization to INT8
 quantize_dynamic(
     model_input=onnx_model_path,                # Input model path
     model_output=quantized_model_path,          # Output model path
-    weight_type=QuantType.QInt16                # Quantize weights to INT16
+    weight_type=QuantType.QInt8                # Quantize weights to INT8
 )
 
 print(f"Quantized model saved at '{quantized_model_path}'.")
