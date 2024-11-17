@@ -72,9 +72,9 @@ class MyCalibrationDataReader(CalibrationDataReader):
 # Prepare a small set of calibration data
 calibration_inputs = []
 sample_texts = [
-    "Hello, how are you?",
-    "What time is it?",
-    "The capital of France is Paris."
+    "hello, how are you",
+    "what time is it",
+    "the capital of france is paris."
 ]
 
 for text in sample_texts:
