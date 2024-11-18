@@ -47,9 +47,9 @@ int recordAudio(){
         inputParams.firstChannel = 0; 
 
         try{
-          audio.openStream(nullptr, &inputParams, RTAUDIO_FLOAT32, kSampleRate, &kBufferFrames, &audioCallback);
+          audio.openStream(nullptr, &inputParams, RTAUDIO_FLOAT32, kSampleRate, const_cast<unsigned int*>(&kBufferFrames), &audioCallback);
           audio.startStream();
-        } catch(RtAudioError &e) {
+        } catch(RtAudio::RtAudioError &e) {
           std::cerr << "RtAudio error: " << e.getMessage() << std::endl;
           return -1;
         }
@@ -59,7 +59,7 @@ int recordAudio(){
 
         if (audio.isStreamRunning()) audio.stopStream();
           audio.closeStream();
-      } catch (RtAudioError &e) {
+      } catch (RtAudio::RtAudioError &e) {
         std::cerr << "RtAudio error during recording: " << e.getMessage() << std::endl;
         return -1;
       }
@@ -75,7 +75,7 @@ int recordAudio(){
         std::cout << "Recording stopped." << std::endl;
         return 1;
       }
-      catch (RtAudioError &e){
+      catch (RtAudio::RtAudioError &e){
         std::cerr << "RtAudio error during shutdown: " << e.getMessage() << std::endl
         return -1;
       }
