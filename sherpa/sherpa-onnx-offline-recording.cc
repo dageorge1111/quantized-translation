@@ -30,27 +30,28 @@ int recordAudio(){
   bool isRecording = false;
   while (true) {
     std::string command;
-    std::cout << "Enter start to recognize audio";
+    std::cout << "Enter start to recognize audio: ";
     std::cin >> command;
+    RtAudio audio;
+    if(audio.getDeviceCount() < 1){
+      std::cerr << "No audio devices" << std::endl;
+      return -1;
+    }
+    RtAudio::StreamParameters inputParams;
+    inputParams.deviceId = audio.getDefaultInputDevice();
+    inputParams.nChannels = 1;
+    inputParams.firstChannel = 0;
 
     if (command == "start" && !isRecording) {
+      std::cout << "located start command" << std::endl;
       try {
-        RtAudio audio;
-        if(audio.getDeviceCount() < 1){
-          std::cerr << "No audio devices" << std::endl;
-          return -1;
-        }
-
-        RtAudio::StreamParameters inputParams;
-        inputParams.deviceId = audio.getDefaultInputDevice();
-        inputParams.nChannels = 1;
-        inputParams.firstChannel = 0; 
-
         try{
           audio.openStream(nullptr, &inputParams, RTAUDIO_FLOAT32, kSampleRate, const_cast<unsigned int*>(&kBufferFrames), &audioCallback);
+          std::cout << "created stream" << std::endl;
           audio.startStream();
-        } catch(RtAudio::RtAudioError &e) {
-          std::cerr << "RtAudio error: " << e.getMessage() << std::endl;
+          std::cout << "started stream" << std::endl;
+        } catch(std::exception &e) {
+          std::cerr << "RtAudio error: " << std::endl;
           return -1;
         }
         
@@ -59,8 +60,8 @@ int recordAudio(){
 
         if (audio.isStreamRunning()) audio.stopStream();
           audio.closeStream();
-      } catch (RtAudio::RtAudioError &e) {
-        std::cerr << "RtAudio error during recording: " << e.getMessage() << std::endl;
+      } catch (std::exception &e) {
+        std::cerr << "RtAudio error during recording: " << std::endl;
         return -1;
       }
     }
@@ -75,18 +76,18 @@ int recordAudio(){
         std::cout << "Recording stopped." << std::endl;
         return 1;
       }
-      catch (RtAudio::RtAudioError &e){
-        std::cerr << "RtAudio error during shutdown: " << e.getMessage() << std::endl
+      catch (std::exception &e){
+        std::cerr << "RtAudio error during shutdown: " << std::endl;
         return -1;
       }
     }
     else if(command == "stop" && !isRecording) {
-      std:cout << "No recording active" << std::endl;
+      std::cout << "No recording active" << std::endl;
     }
     else{
-      std:cout << "Unknown command" << std::endl;
+      std::cout << "Unknown command" << std::endl;
     }
-        
+  }        
 }
 
 int main(int32_t argc, char *argv[]) {
@@ -119,7 +120,7 @@ Usage:
     int recordingStatus = recordAudio();
     if(recordingStatus == -1){
       std::cerr << "Error with recording" << std::endl;
-      return(-1)
+      return(-1);
     }
 
     while (true) {
@@ -131,10 +132,10 @@ Usage:
             break; // Exit the loop and end the program
         }
         if(audioBuffer.empty()){
-          std::cout << "No audio captured."
+          std::cout << "No audio captured.";
         }
 
-        const auto begin = std::chrono::stead_clock::now();
+        const auto begin = std::chrono::steady_clock::now();
 
         auto s = recognizer.CreateStream();
         s->AcceptWaveform(kSampleRate, audioBuffer.data(), audioBuffer.size());
@@ -147,7 +148,7 @@ Usage:
         float elapsed_seconds = std::chrono::duration_cast<std::chrono::milliseconds>(end-begin).count() / 1000.0;
 
         fprintf(stderr, "Elapsed seconds: %.3f s\n", elapsed_seconds);
-        audioBuffer.clean();
+        audioBuffer.clear();
     }
 
     fprintf(stderr, "Exiting program.\n");
