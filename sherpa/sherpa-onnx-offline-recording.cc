@@ -1,157 +1,207 @@
-#include <stdio.h>
-#include <chrono>
-#include <string>
-#include <vector>
 #include <iostream>
-#include <rtaudio/RtAudio.h>
+#include <thread>
+#include <atomic>
+#include "RtAudio.h"
+#include <vector>
+#include <stdio.h>
+#include <chrono>  // NOLINT
+#include <string>
 #include "sherpa-onnx/csrc/offline-recognizer.h"
 #include "sherpa-onnx/csrc/parse-options.h"
 #include "sherpa-onnx/csrc/wave-reader.h"
 
-constexpr unsigned int kSampleRate = 16000;
-constexpr unsigned int kBufferFrames = 256;
+std::atomic<bool> isRecording(false);
+std::vector<int16_t> recordedSamples;
 
-std::vector<float> audioBuffer;
+void recordAudio(RtAudio &audio)
+{
+    if (audio.getDeviceCount() < 1)
+    {
+        std::cerr << "No audio devices found!" << std::endl;
+        return;
+    }
 
-int audioCallback(void *outputBuffer, void *inputBuffer, unsigned int nFrames, double streamTime, RtAudioStreamStatus status, void *userData) {
-  if(status){
-    std::cerr << "Stream overflow" << std::endl;
-  }
+    RtAudio::StreamParameters parameters;
+    parameters.deviceId = audio.getDefaultInputDevice();
+    parameters.nChannels = 1;
+    parameters.firstChannel = 0;
+    unsigned int sampleRate = 44100;
+    unsigned int bufferFrames = 512;
 
-  if(inputBuffer){
-    float *input = static_cast<float *>(inputBuffer);
-    audioBuffer.insert(audioBuffer.end(), input, input + nFrames);
-  }
+    auto audioCallback = [](void *outputBuffer, void *inputBuffer, unsigned int nBufferFrames,
+                            double streamTime, RtAudioStreamStatus status, void *userData) -> int
+    {
+        if (status)
+            std::cerr << "Stream overflow detected!" << std::endl;
+        if (isRecording)
+        {
+            int16_t *buffer = static_cast<int16_t *>(inputBuffer);
+            recordedSamples.insert(recordedSamples.end(), buffer, buffer + nBufferFrames);
+        }
+        return 0;
+    };
 
-  return 0;
+    try
+    {
+        audio.openStream(nullptr, &parameters, RTAUDIO_SINT16,
+                         sampleRate, &bufferFrames, audioCallback, nullptr);
+        audio.startStream();
+    }
+    catch (const std::exception &e)
+    {
+        std::cerr << "Error: " << e.what() << std::endl;
+        return;
+    }
+
+    std::cout << "Recording... Type 'stop' to end recording." << std::endl;
+    while (isRecording)
+    {
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    }
+
+    try
+    {
+        audio.stopStream();
+        if (audio.isStreamOpen())
+            audio.closeStream();
+    }
+    catch (const std::exception &e)
+    {
+        std::cerr << "Error: " << e.what() << std::endl;
+    }
 }
 
-int recordAudio(){
-  bool isRecording = false;
-  while (true) {
-    std::string command;
-    std::cout << "Enter start to recognize audio: ";
-    std::cin >> command;
-    RtAudio audio;
-    if(audio.getDeviceCount() < 1){
-      std::cerr << "No audio devices" << std::endl;
-      return -1;
+void playbackRecording(RtAudio &audio)
+{
+    if (recordedSamples.empty())
+    {
+        std::cerr << "No recording to play back." << std::endl;
+        return;
     }
-    RtAudio::StreamParameters inputParams;
-    inputParams.deviceId = audio.getDefaultInputDevice();
-    inputParams.nChannels = 1;
-    inputParams.firstChannel = 0;
 
-    if (command == "start" && !isRecording) {
-      std::cout << "located start command" << std::endl;
-      try {
-        try{
-          audio.openStream(nullptr, &inputParams, RTAUDIO_FLOAT32, kSampleRate, const_cast<unsigned int*>(&kBufferFrames), &audioCallback);
-          std::cout << "created stream" << std::endl;
-          audio.startStream();
-          std::cout << "started stream" << std::endl;
-        } catch(std::exception &e) {
-          std::cerr << "RtAudio error: " << std::endl;
-          return -1;
-        }
-        
-        isRecording = true;
-        std::cout << "Recording started..." << std::endl;
+    RtAudio::StreamParameters parameters;
+    parameters.deviceId = audio.getDefaultOutputDevice();
+    parameters.nChannels = 1;
+    parameters.firstChannel = 0;
+    unsigned int sampleRate = 44100;
+    unsigned int bufferFrames = 512;
 
-        if (audio.isStreamRunning()) audio.stopStream();
-          audio.closeStream();
-      } catch (std::exception &e) {
-        std::cerr << "RtAudio error during recording: " << std::endl;
-        return -1;
-      }
-    }
-    else if (command == "stop" &&isRecording) {
-      try{
-        if(audio.isStreamRunning()) {
-          audio.stopStream();
-          audio.closeStream();
+    size_t playbackIndex = 0;
+    auto audioCallback = [](void *outputBuffer, void * /*inputBuffer*/, unsigned int nBufferFrames,
+                            double /*streamTime*/, RtAudioStreamStatus status, void *userData) -> int
+    {
+        if (status)
+            std::cerr << "Stream underflow detected!" << std::endl;
+
+        auto *samples = static_cast<int16_t *>(outputBuffer);
+        auto *playbackData = static_cast<std::pair<std::vector<int16_t> *, size_t *> *>(userData);
+        auto *recordedSamples = playbackData->first;
+        auto *playbackIndex = playbackData->second;
+        size_t remainingSamples = recordedSamples->size() - *playbackIndex;
+        unsigned int framesToCopy = std::min(nBufferFrames, static_cast<unsigned int>(remainingSamples));
+
+        std::copy(recordedSamples->begin() + *playbackIndex,
+                  recordedSamples->begin() + *playbackIndex + framesToCopy,
+                  samples);
+
+        *playbackIndex += framesToCopy;
+
+        if (*playbackIndex >= recordedSamples->size())
+        {
+            return 2; // Signal to stop the stream
         }
 
-        isRecording = false;
-        std::cout << "Recording stopped." << std::endl;
-        return 1;
-      }
-      catch (std::exception &e){
-        std::cerr << "RtAudio error during shutdown: " << std::endl;
-        return -1;
-      }
+        return 0;
+    };
+
+    try
+    {
+        std::pair<std::vector<int16_t> *, size_t *> playbackData = {&recordedSamples, &playbackIndex};
+        audio.openStream(&parameters, nullptr, RTAUDIO_SINT16,
+                         sampleRate, &bufferFrames, audioCallback, &playbackData);
+        audio.startStream();
+
+        while (audio.isStreamRunning())
+        {
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        }
+
+        audio.stopStream();
+        if (audio.isStreamOpen())
+            audio.closeStream();
     }
-    else if(command == "stop" && !isRecording) {
-      std::cout << "No recording active" << std::endl;
+    catch (const std::exception &e)
+    {
+        std::cerr << "Error during playback: " << e.what() << std::endl;
     }
-    else{
-      std::cout << "Unknown command" << std::endl;
-    }
-  }        
 }
 
-int main(int32_t argc, char *argv[]) {
-    const char *kUsageMessage = R"usage(
-Persistent Speech Recognition with sherpa-onnx.
-
-Usage:
-./bin/sherpa-onnx-offline --whisper-encoder=/path/to/encoder.onnx \
---whisper-decoder=/path/to/decoder.onnx \
---tokens=/path/to/tokens.txt \
---num-threads=1
-)usage";
-
-    sherpa_onnx::ParseOptions po(kUsageMessage);
+void performSpeechToText(int argc, char *argv[])
+{
+    sherpa_onnx::ParseOptions po("");
     sherpa_onnx::OfflineRecognizerConfig config;
     config.Register(&po);
 
     po.Read(argc, argv);
-    fprintf(stderr, "%s\n", config.ToString().c_str());
-
-    if (!config.Validate()) {
-        fprintf(stderr, "Errors in config!\n");
-        return -1;
+    if (!config.Validate())
+    {
+        std::cerr << "Errors in config!" << std::endl;
+        return;
     }
 
-    fprintf(stderr, "Creating recognizer ...\n");
+    std::cerr << "Creating recognizer ..." << std::endl;
     sherpa_onnx::OfflineRecognizer recognizer(config);
-    fprintf(stderr, "Recognizer created. Setting up RtAudio...\n");
 
-    int recordingStatus = recordAudio();
-    if(recordingStatus == -1){
-      std::cerr << "Error with recording" << std::endl;
-      return(-1);
-    }
+    std::cerr << "Started Speech-to-Text Processing" << std::endl;
 
-    while (true) {
-        std::string command;
-        std::cout << "Enter process to recognize audio or exit to quit";
-        std::cin >> command;
+    int32_t sampling_rate = 44100;
+    std::vector<float> floatSamples(recordedSamples.begin(), recordedSamples.end());
+    auto s = recognizer.CreateStream();
+    s->AcceptWaveform(sampling_rate, floatSamples.data(), floatSamples.size());
 
-        if (command == "exit") {
-            break; // Exit the loop and end the program
-        }
-        if(audioBuffer.empty()){
-          std::cout << "No audio captured.";
-        }
+    std::vector<sherpa_onnx::OfflineStream *> streams = {s.get()};
+    recognizer.DecodeStreams(streams.data(), streams.size());
 
-        const auto begin = std::chrono::steady_clock::now();
-
-        auto s = recognizer.CreateStream();
-        s->AcceptWaveform(kSampleRate, audioBuffer.data(), audioBuffer.size());
-
-        sherpa_onnx::OfflineStream *ss[] = {s.get()};
-        recognizer.DecodeStreams(ss, 1);
-
-        std::cout << s->GetResult().AsJsonString() << "\n----\n";
-        const auto end = std::chrono::steady_clock::now();
-        float elapsed_seconds = std::chrono::duration_cast<std::chrono::milliseconds>(end-begin).count() / 1000.0;
-
-        fprintf(stderr, "Elapsed seconds: %.3f s\n", elapsed_seconds);
-        audioBuffer.clear();
-    }
-
-    fprintf(stderr, "Exiting program.\n");
-    return 0;
+    std::cerr << "Done!" << std::endl;
+    std::cout << "Recognition Result: " << s->GetResult().AsJsonString() << std::endl;
 }
 
+int main(int argc, char *argv[])
+{
+    RtAudio audio;
+    std::string userInput;
+
+    while (true)
+    {
+        std::cout << "Type 'start' to begin recording or 'exit' to quit: ";
+        std::cin >> userInput;
+
+        if (userInput == "start")
+        {
+            isRecording = true;
+            std::thread recordingThread(recordAudio, std::ref(audio));
+
+            while (true)
+            {
+                std::cout << "Type 'stop' to end recording: ";
+                std::cin >> userInput;
+                if (userInput == "stop")
+                {
+                    isRecording = false;
+                    recordingThread.join();
+                    std::cout << "Recording stopped." << std::endl;
+                    performSpeechToText(argc, argv);
+                    break;
+                }
+            }
+        }
+        else if (userInput == "exit")
+        {
+            playbackRecording(audio);
+            performSpeechToText(argc, argv);
+            break;
+        }
+    }
+
+    return 0;
+}
