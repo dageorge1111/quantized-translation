@@ -25,7 +25,7 @@ void recordAudio(RtAudio &audio)
     parameters.deviceId = audio.getDefaultInputDevice();
     parameters.nChannels = 1;
     parameters.firstChannel = 0;
-    unsigned int sampleRate = 44100;
+    unsigned int sampleRate = 16000;
     unsigned int bufferFrames = 512;
 
     auto audioCallback = [](void *outputBuffer, void *inputBuffer, unsigned int nBufferFrames,
@@ -83,7 +83,7 @@ void playbackRecording(RtAudio &audio)
     parameters.deviceId = audio.getDefaultOutputDevice();
     parameters.nChannels = 1;
     parameters.firstChannel = 0;
-    unsigned int sampleRate = 44100;
+    unsigned int sampleRate = 16000;
     unsigned int bufferFrames = 512;
 
     size_t playbackIndex = 0;
@@ -154,8 +154,12 @@ void performSpeechToText(int argc, char *argv[])
 
     std::cerr << "Started Speech-to-Text Processing" << std::endl;
 
-    int32_t sampling_rate = 44100;
-    std::vector<float> floatSamples(recordedSamples.begin(), recordedSamples.end());
+    int32_t sampling_rate = 16000;
+    std::vector<float> floatSamples;
+    floatSamples.reserve(recordedSamples.size());
+    for (auto sample : recordedSamples) {
+        floatSamples.push_back(static_cast<float>(sample) / 32768.0f);
+    }
     auto s = recognizer.CreateStream();
     s->AcceptWaveform(sampling_rate, floatSamples.data(), floatSamples.size());
 
@@ -205,3 +209,4 @@ int main(int argc, char *argv[])
 
     return 0;
 }
+
