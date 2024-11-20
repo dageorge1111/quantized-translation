@@ -71,71 +71,6 @@ void recordAudio(RtAudio &audio)
     }
 }
 
-void playbackRecording(RtAudio &audio)
-{
-    if (recordedSamples.empty())
-    {
-        std::cerr << "No recording to play back." << std::endl;
-        return;
-    }
-
-    RtAudio::StreamParameters parameters;
-    parameters.deviceId = audio.getDefaultOutputDevice();
-    parameters.nChannels = 1;
-    parameters.firstChannel = 0;
-    unsigned int sampleRate = 16000;
-    unsigned int bufferFrames = 512;
-
-    size_t playbackIndex = 0;
-    auto audioCallback = [](void *outputBuffer, void * /*inputBuffer*/, unsigned int nBufferFrames,
-                            double /*streamTime*/, RtAudioStreamStatus status, void *userData) -> int
-    {
-        if (status)
-            std::cerr << "Stream underflow detected!" << std::endl;
-
-        auto *samples = static_cast<int16_t *>(outputBuffer);
-        auto *playbackData = static_cast<std::pair<std::vector<int16_t> *, size_t *> *>(userData);
-        auto *recordedSamples = playbackData->first;
-        auto *playbackIndex = playbackData->second;
-        size_t remainingSamples = recordedSamples->size() - *playbackIndex;
-        unsigned int framesToCopy = std::min(nBufferFrames, static_cast<unsigned int>(remainingSamples));
-
-        std::copy(recordedSamples->begin() + *playbackIndex,
-                  recordedSamples->begin() + *playbackIndex + framesToCopy,
-                  samples);
-
-        *playbackIndex += framesToCopy;
-
-        if (*playbackIndex >= recordedSamples->size())
-        {
-            return 2; // Signal to stop the stream
-        }
-
-        return 0;
-    };
-
-    try
-    {
-        std::pair<std::vector<int16_t> *, size_t *> playbackData = {&recordedSamples, &playbackIndex};
-        audio.openStream(&parameters, nullptr, RTAUDIO_SINT16,
-                         sampleRate, &bufferFrames, audioCallback, &playbackData);
-        audio.startStream();
-
-        while (audio.isStreamRunning())
-        {
-            std::this_thread::sleep_for(std::chrono::milliseconds(100));
-        }
-
-        audio.stopStream();
-        if (audio.isStreamOpen())
-            audio.closeStream();
-    }
-    catch (const std::exception &e)
-    {
-        std::cerr << "Error during playback: " << e.what() << std::endl;
-    }
-}
-
 void performSpeechToText(int argc, char *argv[])
 {
     sherpa_onnx::ParseOptions po("");
@@ -201,8 +136,6 @@ int main(int argc, char *argv[])
         }
         else if (userInput == "exit")
         {
-            playbackRecording(audio);
-            performSpeechToText(argc, argv);
             break;
         }
     }
