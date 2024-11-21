@@ -74,18 +74,23 @@ int main() {
     std::vector<int64_t> attention_mask(max_length, 1);
     size_t batch_size = 1;
 
+    // Define the shape of the input tensor
+    int64_t batch_size_int = static_cast<int64_t>(batch_size);
+    std::array<int64_t, 2> input_shape = {batch_size_int, static_cast<int64_t>(max_length)};
+
+    // Declare memory info
     Ort::MemoryInfo memory_info = Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
 
+    // Create input tensor
     Ort::Value input_tensor = Ort::Value::CreateTensor<int64_t>(
-        memory_info, input_ids.data(), input_ids.size(), {batch_size, max_length});
+        memory_info, input_ids.data(), input_ids.size(), input_shape.data(), input_shape.size());
+
     Ort::Value attention_tensor = Ort::Value::CreateTensor<int64_t>(
-        memory_info, attention_mask.data(), attention_mask.size(), {batch_size, max_length});
+        memory_info, attention_mask.data(), attention_mask.size(), input_shape.data(), input_shape.size());
 
     // Decoder input
     int64_t decoder_start_token_id = 0; // Replace with actual start token ID
     std::vector<int64_t> decoder_input_ids = {decoder_start_token_id};
-    Ort::Value decoder_tensor = Ort::Value::CreateTensor<int64_t>(
-        memory_info, decoder_input_ids.data(), decoder_input_ids.size(), {batch_size, 1});
 
     // Run inference
     const char* input_names[] = {"input_ids", "attention_mask", "decoder_input_ids"};
@@ -95,7 +100,21 @@ int main() {
     std::vector<int64_t> output_ids;
 
     for (size_t i = 0; i < max_output_length; ++i) {
+        // Pad the decoder_input_ids to match the expected max_length
+        std::vector<int64_t> padded_decoder_input_ids = decoder_input_ids;
+        pad_sequence(padded_decoder_input_ids, max_length);
+
+        // Define the updated shape for the decoder input tensor
+        std::array<int64_t, 2> new_decoder_shape = {batch_size_int, static_cast<int64_t>(max_length)};
+
+        // Create the updated decoder tensor
+        Ort::Value decoder_tensor = Ort::Value::CreateTensor<int64_t>(
+            memory_info, padded_decoder_input_ids.data(), padded_decoder_input_ids.size(), new_decoder_shape.data(), new_decoder_shape.size());
+
+        // Prepare ONNX inputs using move semantics
         std::array<Ort::Value, 3> ort_inputs = {std::move(input_tensor), std::move(attention_tensor), std::move(decoder_tensor)};
+        
+        // Run inference
         auto output_tensors = session.Run(Ort::RunOptions{nullptr}, input_names, ort_inputs.data(), ort_inputs.size(), output_names, 1);
 
         // Get logits and find the next token
@@ -113,8 +132,13 @@ int main() {
 
         // Update decoder input for next iteration
         decoder_input_ids.push_back(next_token_id);
-        decoder_tensor = Ort::Value::CreateTensor<int64_t>(
-            memory_info, decoder_input_ids.data(), decoder_input_ids.size(), {batch_size, decoder_input_ids.size()});
+        
+        // Re-create the input tensor and attention tensor for subsequent iterations
+        // Since input_tensor and attention_tensor were moved, recreate them for the next loop iteration.
+        input_tensor = Ort::Value::CreateTensor<int64_t>(
+            memory_info, input_ids.data(), input_ids.size(), input_shape.data(), input_shape.size());
+        attention_tensor = Ort::Value::CreateTensor<int64_t>(
+            memory_info, attention_mask.data(), attention_mask.size(), input_shape.data(), input_shape.size());
     }
 
     // Decode the output
