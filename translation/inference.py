@@ -17,7 +17,12 @@ input_text = "Why do you like Germany so much?"
 inputs = tokenizer([input_text], return_tensors="np", max_length=64, truncation=True, padding="max_length")
 input_ids = inputs["input_ids"]
 attention_mask = inputs["attention_mask"]
-
+# Print the input tokens
+print("Input text:", input_text)
+print("Input token IDs:")
+print(input_ids)
+print("Decoded input tokens:")
+print(tokenizer.batch_decode(input_ids, skip_special_tokens=False))
 # Prepare decoder input IDs with the start token
 decoder_start_token_id = tokenizer.pad_token_id  # Typically `pad_token_id` is used as the start token
 decoder_input_ids = np.full((input_ids.shape[0], 1), decoder_start_token_id, dtype=np.int64)
@@ -49,8 +54,19 @@ for i in range(1, max_length):
     # Stop if all sentences have reached the EOS token
     if np.all(next_token_id == tokenizer.eos_token_id):
         break
+print("Final token IDs (before decoding):")
+print(outputs)
 
 # Decode the output sequences
+# Print the tokenizer's configuration
+print("Tokenizer configuration:", tokenizer.init_kwargs)
+
+# If available, print the vocab file path
+if "vocab_file" in tokenizer.init_kwargs:
+    print("SentencePiece model path:", tokenizer.init_kwargs["vocab_file"])
+else:
+    print("SentencePiece model path not found in init_kwargs.")
+
 decoded_outputs = tokenizer.batch_decode(outputs, skip_special_tokens=True)
 
 # Display the translation result
